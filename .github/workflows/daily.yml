@@ -225,7 +225,7 @@ jobs:
         env:
           ORCHESTRATOR_TOKEN: ${{ secrets.ORCHESTRATOR_TOKEN }}
           PROJECT_NAME: '007-of-two'
-          SESSION_COPY_DELAY: 3300 # Wait 95 minutes before copying sessions
+          SESSION_COPY_DELAY: 3400 # Wait 95 minutes before copying sessions
           ENABLE_SESSION_UPLOAD: 'true' # Set to 'false' to disable artifact upload
           ENABLE_ARTIFACT_UPLOAD: 'true' # Upload as Build Artifact
           ENABLE_RELEASE_UPLOAD: 'false' # Upload to GitHub Release
@@ -239,3 +239,56 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: sessions.zip
           retention-days: 5
+
+      - name: Keep Repository Active (Prevent 60-Day Disable)
+        if: always()
+        env:
+          # Configuration for Keepalive commit
+          # 'always'   = Commit every single time the action runs (Great for testing!)
+          # 'weekly'   = Commit once every 7 days
+          # '25_days'  = Commit once every 25 days (Very safe buffer)
+          # 'monthly'  = Commit once every 30 days
+          # 'default'  = Commit once every 50 days (Cleanest history)
+          KEEPALIVE_MODE: 'always'
+        run: |
+          echo "Checking keepalive policy..."
+
+          # Calculate days since last commit
+          LAST_COMMIT_TS=$(git log -1 --format="%ct" || echo "0")
+          CURRENT_TS=$(date +%s)
+          DAYS_SINCE_COMMIT=$(( (CURRENT_TS - LAST_COMMIT_TS) / 86400 ))
+          echo "Days since last commit: $DAYS_SINCE_COMMIT"
+
+          SHOULD_COMMIT=false
+          if [ "$KEEPALIVE_MODE" = "always" ]; then
+            SHOULD_COMMIT=true
+          elif [ "$KEEPALIVE_MODE" = "weekly" ] && [ "$DAYS_SINCE_COMMIT" -ge 7 ]; then
+            SHOULD_COMMIT=true
+          elif [ "$KEEPALIVE_MODE" = "25_days" ] && [ "$DAYS_SINCE_COMMIT" -ge 25 ]; then
+            SHOULD_COMMIT=true
+          elif [ "$KEEPALIVE_MODE" = "monthly" ] && [ "$DAYS_SINCE_COMMIT" -ge 30 ]; then
+            SHOULD_COMMIT=true
+          elif [ "$KEEPALIVE_MODE" = "default" ] && [ "$DAYS_SINCE_COMMIT" -ge 50 ]; then
+            SHOULD_COMMIT=true
+          fi
+
+          if [ "$SHOULD_COMMIT" = "true" ]; then
+            echo "Keepalive condition met. Creating automated commit..."
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            # Create or update an invisible keepalive file
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > .github_keepalive
+
+            git add .github_keepalive
+            # Check if there are changes to commit (prevents failing if somehow nothing changed)
+            if git diff --staged --quiet; then
+               echo "No changes to commit."
+            else
+               git commit -m "chore: automated keepalive commit to prevent workflow deactivation"
+               git push
+               echo "Keepalive commit pushed successfully."
+            fi
+          else
+            echo "Keepalive condition not met (Mode: $KEEPALIVE_MODE). Skipping commit."
+          fi

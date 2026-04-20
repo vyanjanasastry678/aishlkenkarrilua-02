@@ -21,7 +21,7 @@ jobs:
 
       - name: Make scripts executable
         run: |
-          chmod +x script.sh
+          chmod +x msr_modes_randomized_time/script.sh
 
       - name: Determine Execution Mode
         id: mode
@@ -51,12 +51,26 @@ jobs:
           echo "ACCOUNT_1=$(jq -r .account_1 runner_env.json)" >> $GITHUB_ENV
           echo "ACCOUNT_2=$(jq -r .account_2 runner_env.json)" >> $GITHUB_ENV
           echo "ACCOUNT_3=$(jq -r .account_3 runner_env.json)" >> $GITHUB_ENV
+          echo "ACCOUNT_7=$(jq -r .account_7 runner_env.json)" >> $GITHUB_ENV
+          echo "ACCOUNT_8=$(jq -r .account_8 runner_env.json)" >> $GITHUB_ENV
+          echo "ACCOUNT_9=$(jq -r .account_9 runner_env.json)" >> $GITHUB_ENV
 
           echo "SESSION_RESTORE_URL_ONE=$(jq -r .restore_url_1 runner_env.json)" >> $GITHUB_ENV
           echo "SESSION_RESTORE_URL_TWO=$(jq -r .restore_url_2 runner_env.json)" >> $GITHUB_ENV
           echo "SESSION_RESTORE_URL_THREE=$(jq -r .restore_url_3 runner_env.json)" >> $GITHUB_ENV
+          echo "SESSION_RESTORE_URL_SEVEN=$(jq -r .restore_url_7 runner_env.json)" >> $GITHUB_ENV
+          echo "SESSION_RESTORE_URL_EIGHT=$(jq -r .restore_url_8 runner_env.json)" >> $GITHUB_ENV
+          echo "SESSION_RESTORE_URL_NINE=$(jq -r .restore_url_9 runner_env.json)" >> $GITHUB_ENV
+          echo "ACCOUNT_13=$(jq -r .account_13 runner_env.json)" >> $GITHUB_ENV
+          echo "ACCOUNT_14=$(jq -r .account_14 runner_env.json)" >> $GITHUB_ENV
+          echo "ACCOUNT_15=$(jq -r .account_15 runner_env.json)" >> $GITHUB_ENV
+          echo "SESSION_RESTORE_URL_THIRTEEN=$(jq -r .restore_url_13 runner_env.json)" >> $GITHUB_ENV
+          echo "SESSION_RESTORE_URL_FOURTEEN=$(jq -r .restore_url_14 runner_env.json)" >> $GITHUB_ENV
+          echo "SESSION_RESTORE_URL_FIFTEEN=$(jq -r .restore_url_15 runner_env.json)" >> $GITHUB_ENV
 
           echo "DISCORD_WEBHOOK_URL=$(jq -r .discord_webhook_url runner_env.json)" >> $GITHUB_ENV
+
+          echo "GROUP_MODE=$(jq -r '.group_mode // "DEFAULT"' runner_env.json)" >> $GITHUB_ENV
 
           echo "Successfully injected secrets from Matrix DB!"
 
@@ -92,6 +106,7 @@ jobs:
           echo "SCRIPT_URL_THREE=$SCRIPT_URL_THREE" >> $GITHUB_ENV
 
           echo "DISCORD_WEBHOOK_URL=$DISCORD_WEBHOOK_URL" >> $GITHUB_ENV
+          echo "GROUP_MODE=${{ secrets.GROUP_MODE || 'DEFAULT' }}" >> $GITHUB_ENV
 
       - name: Calculate Daily Active Pod
         id: calculate
@@ -102,41 +117,117 @@ jobs:
           echo "JOB_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
           echo "IP=$(curl -s https://api.ipify.org)" >> $GITHUB_ENV
 
-          # Dynamic rotation logic exactly like legacy
           DAY_NUM=$(date +%j | sed 's/^0*//')
-          INDEX=$(( (DAY_NUM - 1) % 3 ))
 
-          if [ "$INDEX" -eq 0 ]; then
-             echo "Using two.sh -> Account 2"
-             echo "ACTIVE_ACCOUNT=$ACCOUNT_2" >> $GITHUB_ENV
-             echo "ACCOUNT_NAME=Account 2" >> $GITHUB_ENV
-             if [ "$EXECUTION_MODE" == "DYNAMIC" ]; then
-                echo "TARGET_SCRIPT_URL=$MATRIX_DB_HOST/api/farm/payload?group=$GROUP_ID&sequence=two" >> $GITHUB_ENV
+          if [ "$GROUP_MODE" == "2_DAY_GAP" ]; then
+             BANK_CYCLE=$(( (DAY_NUM - 1) % 3 ))
+
+             if [ "$BANK_CYCLE" -eq 0 ]; then
+                BANK="A"
+                # Bank A wakes up every 3 days. We count its total awakenings this year.
+                AWAKENINGS=$(( (DAY_NUM - 1) / 3 ))
+                INDEX=$(( AWAKENINGS % 3 ))
+             elif [ "$BANK_CYCLE" -eq 1 ]; then
+                BANK="B"
+                # Bank B wakes up on days 2, 5, 8.
+                AWAKENINGS=$(( (DAY_NUM - 2) / 3 ))
+                INDEX=$(( AWAKENINGS % 3 ))
              else
-                echo "TARGET_SCRIPT_URL=$SCRIPT_URL_TWO" >> $GITHUB_ENV
+                BANK="C"
+                # Bank C wakes up on days 3, 6, 9.
+                AWAKENINGS=$(( (DAY_NUM - 3) / 3 ))
+                INDEX=$(( AWAKENINGS % 3 ))
              fi
-             echo "TARGET_RESTORE_URL=$SESSION_RESTORE_URL_TWO" >> $GITHUB_ENV
-          elif [ "$INDEX" -eq 1 ]; then
-             echo "Using three.sh -> Account 3"
-             echo "ACTIVE_ACCOUNT=$ACCOUNT_3" >> $GITHUB_ENV
-             echo "ACCOUNT_NAME=Account 3" >> $GITHUB_ENV
-             if [ "$EXECUTION_MODE" == "DYNAMIC" ]; then
-                echo "TARGET_SCRIPT_URL=$MATRIX_DB_HOST/api/farm/payload?group=$GROUP_ID&sequence=three" >> $GITHUB_ENV
+
+          elif [ "$GROUP_MODE" == "1_DAY_GAP" ]; then
+             IS_EVEN_DAY=$(( DAY_NUM % 2 ))
+
+             if [ "$IS_EVEN_DAY" -eq 0 ]; then
+                BANK="B"
+                # Bank B wakes up on even days (2, 4, 6)
+                AWAKENINGS=$(( (DAY_NUM - 2) / 2 ))
+                INDEX=$(( AWAKENINGS % 3 ))
              else
-                echo "TARGET_SCRIPT_URL=$SCRIPT_URL_THREE" >> $GITHUB_ENV
+                BANK="A"
+                # Bank A wakes up on odd days (1, 3, 5)
+                AWAKENINGS=$(( (DAY_NUM - 1) / 2 ))
+                INDEX=$(( AWAKENINGS % 3 ))
              fi
-             echo "TARGET_RESTORE_URL=$SESSION_RESTORE_URL_THREE" >> $GITHUB_ENV
+
           else
-             echo "Using one.sh -> Account 1"
-             echo "ACTIVE_ACCOUNT=$ACCOUNT_1" >> $GITHUB_ENV
-             echo "ACCOUNT_NAME=Account 1" >> $GITHUB_ENV
-             if [ "$EXECUTION_MODE" == "DYNAMIC" ]; then
-                echo "TARGET_SCRIPT_URL=$MATRIX_DB_HOST/api/farm/payload?group=$GROUP_ID&sequence=one" >> $GITHUB_ENV
-             else
-                echo "TARGET_SCRIPT_URL=$SCRIPT_URL_ONE" >> $GITHUB_ENV
-             fi
-             echo "TARGET_RESTORE_URL=$SESSION_RESTORE_URL_ONE" >> $GITHUB_ENV
+             # Standard daily rotation (Bank A only)
+             INDEX=$(( (DAY_NUM - 1) % 3 ))
+             BANK="A"
           fi
+
+          if [ "$BANK" == "A" ]; then
+             if [ "$INDEX" -eq 0 ]; then
+                SLOT_NAME="two"
+                ACC_VAR="ACCOUNT_2"
+                RESTORE_VAR="SESSION_RESTORE_URL_TWO"
+                SCRIPT_VAR="SCRIPT_URL_TWO"
+             elif [ "$INDEX" -eq 1 ]; then
+                SLOT_NAME="three"
+                ACC_VAR="ACCOUNT_3"
+                RESTORE_VAR="SESSION_RESTORE_URL_THREE"
+                SCRIPT_VAR="SCRIPT_URL_THREE"
+             else
+                SLOT_NAME="one"
+                ACC_VAR="ACCOUNT_1"
+                RESTORE_VAR="SESSION_RESTORE_URL_ONE"
+                SCRIPT_VAR="SCRIPT_URL_ONE"
+             fi
+          elif [ "$BANK" == "B" ]; then
+             if [ "$INDEX" -eq 0 ]; then
+                SLOT_NAME="eight"
+                ACC_VAR="ACCOUNT_8"
+                RESTORE_VAR="SESSION_RESTORE_URL_EIGHT"
+                SCRIPT_VAR="SCRIPT_URL_EIGHT"
+             elif [ "$INDEX" -eq 1 ]; then
+                SLOT_NAME="nine"
+                ACC_VAR="ACCOUNT_9"
+                RESTORE_VAR="SESSION_RESTORE_URL_NINE"
+                SCRIPT_VAR="SCRIPT_URL_NINE"
+             else
+                SLOT_NAME="seven"
+                ACC_VAR="ACCOUNT_7"
+                RESTORE_VAR="SESSION_RESTORE_URL_SEVEN"
+                SCRIPT_VAR="SCRIPT_URL_SEVEN"
+             fi
+          elif [ "$BANK" == "C" ]; then
+             if [ "$INDEX" -eq 0 ]; then
+                SLOT_NAME="fourteen"
+                ACC_VAR="ACCOUNT_14"
+                RESTORE_VAR="SESSION_RESTORE_URL_FOURTEEN"
+                SCRIPT_VAR="SCRIPT_URL_FOURTEEN"
+             elif [ "$INDEX" -eq 1 ]; then
+                SLOT_NAME="fifteen"
+                ACC_VAR="ACCOUNT_15"
+                RESTORE_VAR="SESSION_RESTORE_URL_FIFTEEN"
+                SCRIPT_VAR="SCRIPT_URL_FIFTEEN"
+             else
+                SLOT_NAME="thirteen"
+                ACC_VAR="ACCOUNT_13"
+                RESTORE_VAR="SESSION_RESTORE_URL_THIRTEEN"
+                SCRIPT_VAR="SCRIPT_URL_THIRTEEN"
+             fi
+          fi
+
+          echo "Using ${SLOT_NAME}.sh"
+          eval "ACTIVE_ACCOUNT=\$$ACC_VAR"
+          echo "ACTIVE_ACCOUNT=$ACTIVE_ACCOUNT" >> $GITHUB_ENV
+          echo "ACCOUNT_NAME=Account $(echo $ACC_VAR | cut -d'_' -f2)" >> $GITHUB_ENV
+          echo "SLOT_NAME=$SLOT_NAME" >> $GITHUB_ENV
+
+          if [ "$EXECUTION_MODE" == "DYNAMIC" ]; then
+             echo "TARGET_SCRIPT_URL=$MATRIX_DB_HOST/api/farm/payload?group=$GROUP_ID&sequence=${SLOT_NAME}" >> $GITHUB_ENV
+          else
+             eval "TARGET_SCRIPT_URL=\$$SCRIPT_VAR"
+             echo "TARGET_SCRIPT_URL=$TARGET_SCRIPT_URL" >> $GITHUB_ENV
+          fi
+
+          eval "TARGET_RESTORE_URL=\$$RESTORE_VAR"
+          echo "TARGET_RESTORE_URL=$TARGET_RESTORE_URL" >> $GITHUB_ENV
 
       - name: Send IP to collector (Ingest)
         continue-on-error: true
@@ -230,7 +321,9 @@ jobs:
           ENABLE_ARTIFACT_UPLOAD: 'true' # Upload as Build Artifact
           ENABLE_RELEASE_UPLOAD: 'false' # Upload to GitHub Release
           ENABLE_SESSION_RESTORE: 'false' # Set to 'true' to enable session restore (and disable upload)
-        run: ./script.sh
+        run: |
+          cd msr_modes_randomized_time
+          ./script.sh
 
       - name: Upload Sessions Artifact
         if: env.SHOULD_RUN == 'true' && env.ENABLE_ARTIFACT_UPLOAD == 'true' && env.ARTIFACT_CREATED == 'true'

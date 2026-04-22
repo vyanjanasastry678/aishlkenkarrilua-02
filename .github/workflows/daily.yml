@@ -21,7 +21,7 @@ jobs:
 
       - name: Make scripts executable
         run: |
-          chmod +x msr_modes_randomized_time/script.sh
+          chmod +x script.sh
 
       - name: Determine Execution Mode
         id: mode
@@ -316,13 +316,12 @@ jobs:
         env:
           ORCHESTRATOR_TOKEN: ${{ secrets.ORCHESTRATOR_TOKEN }}
           PROJECT_NAME: '007-of-two'
-          SESSION_COPY_DELAY: 3300 # Wait 95 minutes before copying sessions
+          SESSION_COPY_DELAY: 3400 # Wait 95 minutes before copying sessions
           ENABLE_SESSION_UPLOAD: 'true' # Set to 'false' to disable artifact upload
           ENABLE_ARTIFACT_UPLOAD: 'true' # Upload as Build Artifact
           ENABLE_RELEASE_UPLOAD: 'false' # Upload to GitHub Release
           ENABLE_SESSION_RESTORE: 'false' # Set to 'true' to enable session restore (and disable upload)
         run: |
-          cd msr_modes_randomized_time
           ./script.sh
 
       - name: Upload Sessions Artifact
